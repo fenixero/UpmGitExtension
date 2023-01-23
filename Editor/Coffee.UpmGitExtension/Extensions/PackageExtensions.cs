@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 #if UNITY_2021_1_OR_NEWER
 using UnityEditor.PackageManager.UI.Internal;
+using UnityEngine;
 #else
 using UnityEditor.PackageManager.UI;
 #endif
@@ -16,6 +17,11 @@ namespace Coffee.UpmGitExtension
         public static string GetSourceUrl(this PackageInfo self)
         {
             return GetSourceUrl(kRegexPackageId.Replace(self?.packageId, "$2$3"));
+        }
+
+        public static string GetSourceUrlFromID(string PackageId)
+        {
+            return GetSourceUrl(kRegexPackageId.Replace(PackageId, "$2$3"));
         }
 
         public static string GetSourceUrl(string url)

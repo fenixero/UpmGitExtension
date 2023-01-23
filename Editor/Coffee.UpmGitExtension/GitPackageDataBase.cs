@@ -5,6 +5,10 @@ using System.Linq;
 using UnityEngine;
 using UnityEditor;
 using UnityEditorInternal;
+using System.Reflection;
+using UnityEditor.PackageManager;
+using UnityEditor.PackageManager.Requests;
+using System.Text.RegularExpressions;
 #if UNITY_2021_1_OR_NEWER
 using UnityEditor.PackageManager.UI.Internal;
 #else
@@ -131,8 +135,13 @@ namespace Coffee.UpmGitExtension
         /// </summary>
         public static void Fetch()
         {
+
             GetInstalledGitPackages()
+#if UNITY_2021_3_OR_NEWER
+                .Select(p => PackageExtensions.GetSourceUrlFromID(p?.versions?.primary?.uniqueId))
+#else
                 .Select(p => p?.versions?.primary?.packageInfo?.GetSourceUrl())
+#endif
                 .Where(url => !string.IsNullOrEmpty(url))
                 .Concat(GetCachedRepositoryUrls())
                 .Distinct()
@@ -166,8 +175,11 @@ namespace Coffee.UpmGitExtension
             }
             isPaused = false;
         }
-
-        public static IEnumerable<UpmPackageVersionEx> GetAvailablePackageVersions(string packageId = null, string repoUrl = null, bool preRelease = false)
+#if UNITY_2021_3_OR_NEWER
+        public static IEnumerable<UpmPackageVersion> GetAvailablePackageVersions(string packageId = null, string repoUrl = null, bool preRelease = false)
+#else
+	    public static IEnumerable<UpmPackageVersionEx> GetAvailablePackageVersions(string packageId = null, string repoUrl = null, bool preRelease = false)
+#endif
         {
             return _resultCaches
                 .SelectMany(r => r.versions)
@@ -191,6 +203,9 @@ namespace Coffee.UpmGitExtension
 #if UNITY_2020_2_OR_NEWER
         internal static UpmClient _upmClient => ScriptableSingleton<ServicesContainer>.instance.Resolve<UpmClient>();
         internal static PackageDatabase _packageDatabase => ScriptableSingleton<ServicesContainer>.instance.Resolve<PackageDatabase>();
+#if UNITY_2021_3_OR_NEWER
+        internal static Dictionary<string, UnityEditor.PackageManager.PackageInfo> _packages;
+#endif
         internal static PageManager _pageManager => ScriptableSingleton<ServicesContainer>.instance.Resolve<PageManager>();
 #else
         internal static IUpmClient _upmClient => UpmClient.instance;
@@ -200,6 +215,33 @@ namespace Coffee.UpmGitExtension
 
 #if UNITY_2021_1_OR_NEWER
         private static bool _enablePreReleasePackages => _settings.enablePreReleasePackages;
+#if UNITY_2021_3_OR_NEWER
+        static internal void AddPackageInfo(UpmPackageVersionEx pack)
+        {
+            if (_packages == null)
+                _packages = new Dictionary<string, UnityEditor.PackageManager.PackageInfo>();
+            bool tryadd = _packages.TryAdd(pack.uniqueId, pack.packageInfo);
+            //if (tryadd)
+            //    Debug.Log("11 - " + pack.uniqueId);
+        }
+
+        static internal UnityEditor.PackageManager.PackageInfo GetPackageInfo(string id)
+        {
+            if(_packages==null)
+                _packages = new Dictionary<string, UnityEditor.PackageManager.PackageInfo>();
+            UnityEditor.PackageManager.PackageInfo[] packs = UnityEditor.PackageManager.PackageInfo.GetAll();
+            foreach (var pack1 in packs)
+            {
+                bool tryadd = _packages.TryAdd(pack1.packageId, pack1);
+                //if (tryadd)
+                //    Debug.Log("22 - " + pack1.packageId);
+            }
+            if (_packages.ContainsKey(id))
+                return _packages[id];
+            else
+                return null;
+        }
+#endif
 #else
         private static bool _enablePreReleasePackages => _settings.enablePreviewPackages;
 #endif
@@ -227,20 +269,38 @@ namespace Coffee.UpmGitExtension
                     {
                         // Git mode: Register all installable package versions.
                         var upmPackage = _packageDatabase.GetPackage(versions.Key) as UpmPackage;
+#if UNITY_2021_3_OR_NEWER
                         var installedVersion = upmPackage.versions.installed as UpmPackageVersion;
-                        if (installedVersion.packageInfo.source != UnityEditor.PackageManager.PackageSource.Git)
+                        UnityEditor.PackageManager.PackageInfo packageInfo = GetPackageInfo(installedVersion.uniqueId);
+#else
+                        var installedVersion = upmPackage.versions.installed as UpmPackageVersion;
+                        UnityEditor.PackageManager.PackageInfo packageInfo = installedVersion.packageInfo;
+#endif
+                        if (packageInfo.source != UnityEditor.PackageManager.PackageSource.Git)
                             return upmPackage;
 
                         // Unlock.
                         installedVersion.UnlockVersion();
-
+						
+#if UNITY_2021_3_OR_NEWER
+                        var newVersions = new[] { installedVersion }
+#else
                         var newVersions = new[] { new UpmPackageVersionEx(installedVersion) }
+#endif
                                 .Concat(versions.Where(v => v.uniqueId != installedVersion.uniqueId))
-                                .OrderBy(v => v.semVersion)
+#if UNITY_2021_3_OR_NEWER
+                                .OrderBy(v => v.version)
+#else
+	                            .OrderBy(v => v.semVersion)
+#endif
                                 .ThenBy(v => v.isInstalled)
                                 .ToArray();
 
+#if UNITY_2021_3_OR_NEWER
+                        upmPackage.UpdateVersions(newVersions, 0);
+#else
                         upmPackage.UpdateVersions(newVersions);
+#endif
 
                         return upmPackage;
                     }
@@ -248,7 +308,11 @@ namespace Coffee.UpmGitExtension
                     {
                         // Registory mode: Register as installable package.
                         var upmPackage = new UpmPackage(versions.Key + " (git)", true, PackageType.ScopedRegistry);
+#if UNITY_2021_3_OR_NEWER
+                        upmPackage.UpdateVersions(versions.OrderBy(v => v.version), 0);
+#else
                         upmPackage.UpdateVersions(versions.OrderBy(v => v.version));
+#endif
                         upmPackage.Set("m_Type", PackageType.MainNotUnity | PackageType.Installable);
                         return upmPackage;
                     }

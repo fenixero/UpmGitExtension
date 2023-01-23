@@ -109,7 +109,12 @@ namespace Coffee.UpmGitExtension
 #endif
 
                 _targetVersion = null;
+#if UNITY_2021_3_OR_NEWER
+                System.Collections.Generic.IEnumerable<UpmPackageVersion> data = GitPackageDatabase.GetAvailablePackageVersions(preRelease: true);
+                var packageVersion = GitPackageDatabase.GetAvailablePackageVersions(preRelease: true).FirstOrDefault(v => GitPackageDatabase.GetPackageInfo(v.uniqueId).packageId == packageInfo.packageId);
+#else
                 var packageVersion = GitPackageDatabase.GetAvailablePackageVersions(preRelease: true).FirstOrDefault(v => v.packageInfo.packageId == packageInfo.packageId);
+#endif
                 if (packageVersion != null)
                 {
                     var package = GitPackageDatabase.GetPackage(packageVersion);
@@ -183,14 +188,24 @@ namespace Coffee.UpmGitExtension
         {
             if (_targetVersion != null)
             {
-                Application.OpenURL(_targetVersion.packageInfo.GetRepositoryUrlForBrowser());
+#if UNITY_2021_3_OR_NEWER
+                PackageInfo packageInfo = GitPackageDatabase.GetPackageInfo(_targetVersion.uniqueId);
+#else
+                PackageInfo packageInfo = _targetVersion.packageInfo;
+#endif
+                Application.OpenURL(packageInfo.GetRepositoryUrlForBrowser());
             }
         }
 
         private void UpdatePackage()
         {
-            if (_targetVersion?.packageInfo?.source == PackageSource.Git)
-                GitPackageDatabase.Install(_targetVersion.packageInfo.packageId);
+#if UNITY_2021_3_OR_NEWER
+            PackageInfo packageInfo = GitPackageDatabase.GetPackageInfo(_targetVersion.uniqueId);
+#else
+            PackageInfo packageInfo = _targetVersion.packageInfo;
+#endif
+            if (packageInfo.source == PackageSource.Git)
+                GitPackageDatabase.Install(packageInfo.packageId);
             else
                 _clickableToUpdate?.Call("Invoke", new MouseDownEvent());
         }
@@ -202,12 +217,26 @@ namespace Coffee.UpmGitExtension
                 .Select(item => new { label = item.Q<Toggle>("versionHistoryItemToggle")?.Q<Label>(), version = item.version as UpmPackageVersionEx });
 #else
             var items = _root.Query<PackageVersionItem>().Build().ToList()
+#if UNITY_2021_3_OR_NEWER
+                .Select(item => {
+                    PackageInfo pack = GitPackageDatabase.GetPackageInfo(item.version.uniqueId);
+                    if (pack == null)
+                    {
+                        return null;
+                    }
+                    UpmPackageVersionEx version = new UpmPackageVersionEx((item.version as UpmPackageVersion), pack);
+                    return new { label = item.Q<Label>("versionLabel"), version }; });
+#else
                 .Select(item => new { label = item.Q<Label>("versionLabel"), version = item.version as UpmPackageVersionEx });
+#endif
 #endif
             foreach(var item in items)
             {
-                if (item.label != null && item.version != null)
-                    item.label.text = item.version.fullVersionString;
+                if (item != null)
+                {
+                    if (item.label != null && item.version != null)
+                        item.label.text = item.version.fullVersionString;
+                }
             }
         }
     }

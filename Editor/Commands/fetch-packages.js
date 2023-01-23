@@ -87,6 +87,11 @@ const parseRef = text => {
       m_IsInstalled: false,
       m_IsFullyFetched: true,
       m_Author: author,
+	  m_Entitlements: {
+		m_IsAllowed: true,
+		m_LicenseType: 0,
+		m_Status: 3,
+	  },
       m_VersionString: p.version,
       m_Tag: 4,
       m_PackageInfo: {

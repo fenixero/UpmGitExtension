@@ -161,7 +161,16 @@ namespace Coffee.UpmGitExtension
                     break;
                 case State.VersionSelected:
                     _installPackageButton.SetEnabled(true);
+#if GIT_ADD
+                    string url = _currentVersion.uniqueId;
+                    if (!url.Contains(".git#"))
+                    {
+                        url = url.Replace("#", ".git#");
+                    }
+                    _packageNameLabel.text = url;
+#else
                     _packageNameLabel.text = _currentVersion.uniqueId;
+#endif
                     break;
                 case State.Error:
                     _findVersionsError.visible = true;
@@ -208,16 +217,32 @@ namespace Coffee.UpmGitExtension
             var menu = new GenericMenu();
             GenericMenu.MenuFunction2 callback = (v) =>
             {
+#if UNITY_2021_3_OR_NEWER
+                var version = v as UpmPackageVersion;
+                UnityEditor.PackageManager.PackageInfo packageInfo = GitPackageDatabase.GetPackageInfo(version.uniqueId);
+#else
                 var version = v as UpmPackageVersionEx;
+#endif
                 _currentVersion = version;
+#if UNITY_2021_3_OR_NEWER
+                _versionSelectButton.text = GetShortPackageId(version, packageInfo);
+#else
                 _versionSelectButton.text = GetShortPackageId(version);
+#endif
                 SetState(State.VersionSelected);
             };
 
             var repoUrl = GetRepoUrl(_repoUrlText.value, _pathText.value);
-            foreach (var version in GitPackageDatabase.GetAvailablePackageVersions(repoUrl: repoUrl, preRelease: true).OrderByDescending(v => v.semVersion))
+#if UNITY_2021_3_OR_NEWER
+            foreach (var version in GitPackageDatabase.GetAvailablePackageVersions(repoUrl: repoUrl, preRelease: true).OrderByDescending(v => v.version))
             {
+                UnityEditor.PackageManager.PackageInfo packageInfo = GitPackageDatabase.GetPackageInfo(version.uniqueId);
+                var text = GetShortPackageId(version, packageInfo);
+#else
+	        foreach (var version in GitPackageDatabase.GetAvailablePackageVersions(repoUrl: repoUrl, preRelease: true).OrderByDescending(v => v.version))
+			{
                 var text = GetShortPackageId(version);
+#endif
                 menu.AddItem(new GUIContent(text), _versionSelectButton.text == text, callback, version);
             }
 
@@ -226,7 +251,14 @@ namespace Coffee.UpmGitExtension
 
         private void OnClick_InstallPackage()
         {
-            GitPackageDatabase.Install(_currentVersion.uniqueId);
+            string url = _currentVersion.uniqueId;
+#if GIT_ADD
+            if (!url.Contains(".git#"))
+            {
+                url = url.Replace("#", ".git#");
+            }
+#endif
+            GitPackageDatabase.Install(url);
         }
 
         private static string GetRepoUrl(string url, string path)
@@ -239,6 +271,9 @@ namespace Coffee.UpmGitExtension
             // scp to ssh
             url = PackageExtensions.GetSourceUrl(url);
 
+#if GIT_ADD
+            url = url + ".git";
+#endif
             path = path.Trim('/');
             return 0 < path.Length ? url + "?path=" + path : url;
         }
@@ -246,7 +281,16 @@ namespace Coffee.UpmGitExtension
         private static string GetShortPackageId(UpmPackageVersionEx self)
         {
             var semver = self.semVersion.ToString();
-            var revision = self.packageInfo.git.revision;
+            var revision = self.packageInfo?.git?.revision ?? "";
+            return revision.Contains(semver)
+                ? $"{self.packageUniqueId}/{semver}"
+                : $"{self.packageUniqueId}/{semver} ({revision})";
+        }
+
+        private static string GetShortPackageId(UpmPackageVersion self, UnityEditor.PackageManager.PackageInfo packageInfo)
+        {
+            var semver = self.version.ToString();
+            var revision = packageInfo.git?.revision ?? "";
             return revision.Contains(semver)
                 ? $"{self.packageUniqueId}/{semver}"
                 : $"{self.packageUniqueId}/{semver} ({revision})";

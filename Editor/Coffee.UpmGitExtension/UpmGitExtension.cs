@@ -11,6 +11,7 @@ using PackageInfo = UnityEditor.PackageManager.PackageInfo;
 using UnityEngine.UIElements;
 #if UNITY_2021_1_OR_NEWER
 using UnityEditor.PackageManager.UI.Internal;
+using UnityEngine;
 #endif
 
 // For tests
@@ -26,6 +27,9 @@ namespace Coffee.UpmGitExtension
         [InitializeOnLoadMethod]
         private static void InitializeOnLoadMethod()
         {
+#if UNITY_2021_3_OR_NEWER////
+            _pageManager.ClearSelection();
+#endif		
             var ext = new UpmGitExtension();
             PackageManagerExtensions.RegisterExtension(ext as IPackageManagerExtension);
 #if SUPPORT_MENU_EXTENSIONS
@@ -50,10 +54,26 @@ namespace Coffee.UpmGitExtension
         {
         }
 
+        internal static PageManager _pageManager => ScriptableSingleton<ServicesContainer>.instance.Resolve<PageManager>();
+
         void IPackageManagerExtension.OnPackageSelectionChange(PackageInfo packageInfo)
         {
-            if (packageInfo == null) return;
 
+            if (packageInfo == null)
+#if UNITY_2021_3_OR_NEWER//////
+            {
+                if (_pageManager.GetSelectedVersion() != null)
+                {
+                    packageInfo = GitPackageDatabase.GetPackageInfo(_pageManager.GetSelectedVersion().uniqueId);
+                    if (packageInfo == null)
+                        return;
+                }
+                else
+                    return;
+            }
+#else
+				return;
+#endif
             Initialize();
             _packageDetailsExtension?.OnPackageSelectionChange(packageInfo);
         }
