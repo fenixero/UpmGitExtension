@@ -150,6 +150,10 @@ namespace Coffee.UpmGitExtension
         {
             if (_initialized || !GitPackageInstallationWindow.IsResourceReady() || !GitButton.IsResourceReady()) return;
 
+#if UNITY_2021_3_OR_NEWER
+            if (!this.GetRootTrue())
+                return;
+#endif
             _initialized = true;
 
             // Find root element.
